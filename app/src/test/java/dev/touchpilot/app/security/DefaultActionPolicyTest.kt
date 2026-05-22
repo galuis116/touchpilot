@@ -68,6 +68,132 @@ class DefaultActionPolicyTest {
         assertIs<PolicyDecision.Allow>(decision)
     }
 
+    @Test
+    fun benignTapIsApprovedEvenWhenScreenContainsBank() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("tap"),
+                args = mapOf("text" to "Settings"),
+                source = ToolSource.LOCAL_ROUTER,
+                activeScreen = "Banking app home screen"
+            )
+        )
+
+        assertIs<PolicyDecision.RequireApproval>(decision)
+    }
+
+    @Test
+    fun benignOpenAppIsApprovedEvenWhenScreenContainsPassword() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("open_app"),
+                args = mapOf("target" to "Calculator"),
+                source = ToolSource.LOCAL_ROUTER,
+                activeScreen = "Passwords saved earlier in this session"
+            )
+        )
+
+        assertIs<PolicyDecision.RequireApproval>(decision)
+    }
+
+    @Test
+    fun benignScrollIsApprovedEvenWhenScreenContainsPurchase() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("scroll"),
+                args = mapOf("direction" to "forward"),
+                source = ToolSource.LOCAL_ROUTER,
+                activeScreen = "Order history including past purchase totals"
+            )
+        )
+
+        assertIs<PolicyDecision.RequireApproval>(decision)
+    }
+
+    @Test
+    fun benignPressBackIsApprovedEvenWhenScreenMentionsDeleteAccount() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("press_back"),
+                args = emptyMap(),
+                source = ToolSource.LOCAL_ROUTER,
+                activeScreen = "Help article: how to delete account permanently"
+            )
+        )
+
+        assertIs<PolicyDecision.RequireApproval>(decision)
+    }
+
+    @Test
+    fun benignOpenAppIsApprovedEvenWhenScreenContainsFactoryReset() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("open_app"),
+                args = mapOf("target" to "Photos"),
+                source = ToolSource.LOCAL_ROUTER,
+                activeScreen = "Search results mentioning factory reset instructions"
+            )
+        )
+
+        assertIs<PolicyDecision.RequireApproval>(decision)
+    }
+
+    @Test
+    fun blocksOpenAppWhenIntentTargetsBankingApp() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("open_app"),
+                args = mapOf("target" to "Bank of Example"),
+                source = ToolSource.LOCAL_ROUTER,
+                activeScreen = "Calculator"
+            )
+        )
+
+        assertIs<PolicyDecision.Block>(decision)
+    }
+
+    @Test
+    fun blocksTypeTextWhenIntentTargetsPasswordWorkflow() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("tap"),
+                args = mapOf("text" to "Recover account"),
+                source = ToolSource.LOCAL_ROUTER,
+                activeScreen = "Calculator"
+            )
+        )
+
+        assertIs<PolicyDecision.Block>(decision)
+    }
+
+    @Test
+    fun messageSendDetectionStillConsultsActiveScreen() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("tap"),
+                args = mapOf("text" to "Send message"),
+                source = ToolSource.LOCAL_ROUTER,
+                activeScreen = "WhatsApp chat with Alice"
+            )
+        )
+
+        assertIs<PolicyDecision.RequireApproval>(decision)
+    }
+
+    @Test
+    fun mcpToolEscalatesToApprovalEvenWhenScreenIsBenign() {
+        val decision = policy.evaluate(
+            ToolPolicyRequest(
+                tool = mediumTool("tap"),
+                args = mapOf("text" to "Continue"),
+                source = ToolSource.MCP,
+                activeScreen = "Calculator"
+            )
+        )
+
+        assertIs<PolicyDecision.RequireApproval>(decision)
+    }
+
     private fun mediumTool(name: String): ToolSpec {
         return ToolSpec(
             name = name,

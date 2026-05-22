@@ -50,21 +50,15 @@ interface ActionPolicy {
     fun evaluate(request: ToolPolicyRequest): PolicyDecision
 }
 
-class DefaultActionPolicy : ActionPolicy {
+class DefaultActionPolicy(
+    private val blockedWorkflows: List<BlockedWorkflow> = BlockedWorkflow.DefaultWorkflows
+) : ActionPolicy {
     override fun evaluate(request: ToolPolicyRequest): PolicyDecision {
         if (request.tool.risk == ToolRisk.LOW) {
             return PolicyDecision.Allow("low risk action")
         }
 
-        val haystack = buildString {
-            append(request.tool.name)
-            append(' ')
-            append(request.args.values.joinToString(separator = " "))
-            append(' ')
-            append(request.activeScreen)
-        }.lowercase()
-
-        blockedWorkflow(haystack)?.let { return it }
+        blockedWorkflow(request)?.let { return it }
 
         if (isSensitiveTextEntry(request)) {
             return PolicyDecision.Block(
@@ -73,7 +67,7 @@ class DefaultActionPolicy : ActionPolicy {
             )
         }
 
-        if (isMessageSend(request, haystack)) {
+        if (isMessageSend(request)) {
             return approval(
                 request,
                 reason = "sending a message requires explicit approval",
@@ -106,27 +100,11 @@ class DefaultActionPolicy : ActionPolicy {
         }
     }
 
-    private fun blockedWorkflow(haystack: String): PolicyDecision.Block? {
-        val blocked = listOf(
-            "payment" to "payments are blocked",
-            "pay " to "payments are blocked",
-            "password" to "password workflows are blocked",
-            "passcode" to "password workflows are blocked",
-            "account recovery" to "account recovery workflows are blocked",
-            "recover account" to "account recovery workflows are blocked",
-            "factory reset" to "destructive settings changes are blocked",
-            "erase all" to "destructive settings changes are blocked",
-            "delete account" to "destructive account changes are blocked",
-            "purchase" to "purchases are blocked",
-            "buy now" to "purchases are blocked",
-            "bank" to "banking or financial actions are blocked",
-            "wire transfer" to "banking or financial actions are blocked",
-            "transfer money" to "banking or financial actions are blocked"
-        )
-        val match = blocked.firstOrNull { (needle, _) -> needle in haystack } ?: return null
+    private fun blockedWorkflow(request: ToolPolicyRequest): PolicyDecision.Block? {
+        val match = blockedWorkflows.firstOrNull { it.matches(request) } ?: return null
         return PolicyDecision.Block(
-            reason = match.second,
-            userMessage = "TouchPilot blocked this request because ${match.second}."
+            reason = match.reason,
+            userMessage = "TouchPilot blocked this request because ${match.reason}."
         )
     }
 
@@ -136,13 +114,25 @@ class DefaultActionPolicy : ActionPolicy {
         return SensitiveTextRedactor.containsSensitiveText(text)
     }
 
-    private fun isMessageSend(request: ToolPolicyRequest, haystack: String): Boolean {
+    private fun isMessageSend(request: ToolPolicyRequest): Boolean {
         if (request.tool.name != "tap") return false
         val tapText = request.args["text"].orEmpty().lowercase()
         val tapsSend = tapText in setOf("send", "send message", "submit")
-        val looksLikeMessageApp = listOf("messages", "sms", "whatsapp", "telegram", "signal", "mail", "gmail")
-            .any { it in haystack }
+        val screen = request.activeScreen.lowercase()
+        val looksLikeMessageApp = MessageAppHints.any { hint -> hint in screen }
         return tapsSend && looksLikeMessageApp
+    }
+
+    private companion object {
+        val MessageAppHints: List<String> = listOf(
+            "messages",
+            "sms",
+            "whatsapp",
+            "telegram",
+            "signal",
+            "mail",
+            "gmail"
+        )
     }
 
     private fun approval(
